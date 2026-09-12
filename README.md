@@ -17,7 +17,7 @@ No current known issues
 
 # Dependencies and Licensing
 ## Dependencies
-The below are non-standard python library dependencies that will have to be installed to modify or run the python script. These are not required to run the executable.
+The below are non-standard python library dependencies that will have to be installed to modify or run the python script (also also to build an executable).
 - cv2
 - pandas
 - openpyxl (pandas open excel required)
