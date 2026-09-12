@@ -11,6 +11,12 @@ Required (non-standard) dependencies:
 -openpyxl (pandas open excel required)
 """
 
+'''--------TODO List
+1) update documentation
+2) re-make exe
+3) update GitHub
+'''
+
 #-----------------------------imports
 import datetime
 import tkinter as tk
@@ -22,6 +28,48 @@ import shutil
 import pandas as pd
 import numpy as np
 from pathlib import Path
+
+#-----------------------------constants and reference dicts
+#--constnant dict for open type
+CONST_openType = {'file':1,
+                  'dir':2}
+
+#--constant dict for accepted media property formats
+CONST_media_formats = {'MKV': '.mkv'}
+
+#--constant dict for accepted input template formats
+CONST_template_formats = {'XLSX': '.xlsx',
+                          'XLS': '.xls',
+                          'CSV': '.csv'}
+
+#--constant dict for the output CSV file used when parsing files
+CONST_CSVexport_hdrs = {'file_name':'File_Name',    #format for dict is {'media_file_props.attr_name':'CSV output File Header'}
+                        'full_path':'File_Path',
+                        'good_estimate':'Good_Estimate',
+                        'est_time_raw':'Runtime_Seconds',
+                        'est_time_str':'Runtime_HH:MM:SS'}
+
+#--constant dict for error types
+CONST_err_types = {'err':'error',
+                   'warn':'warning'}
+
+#--constnant dict for open type
+CONST_actionType = {'move':1,
+                    'copy':2}
+
+#--Misc theme constants for labels and buttons
+sys_fnt_HDR1 = ('Arial', '20', 'normal', 'roman')
+sys_fnt_txt = ('Arial', '14', 'normal', 'roman')
+sys_fnt_BTN = ('Arial', '14', 'normal', 'roman')
+sys_fnt_small = ('Arial', '8', 'normal', 'roman')
+
+#--file import key columns
+sys_tmplt_oldFile_hdrName = 'File_Path'
+sys_tmplt_newFile_hdrName = 'New_File_Path'
+
+#--misc constants
+sys_wrap_len = 550
+sys_err_wndw_width = 600
 
 #-----------------------------supporting methods, classes, constants
 #--class for media file properties
@@ -89,9 +137,9 @@ class user_prompt_update(tk.Toplevel):
         self.resizable(False,False)     #fixed size
         self.master_ref = master
         self.tmplt_var = tk.StringVar() #temp result path
-        self.del_var = tk.BooleanVar()  #temp delete variable
+        self.del_var = tk.BooleanVar()  #delete old files - only valid for "copy" update
         self.template_path = None       #result choice
-        self.del_old = False            #delete old files - default false
+        self.upd_action = tk.IntVar(value=CONST_actionType['move'])     #update action - default copy
 
         self.protocol("WM_DELETE_WINDOW", self.on_close)    #handle window close button
         self.init_main_window()                             #initialize window elements
@@ -106,8 +154,18 @@ class user_prompt_update(tk.Toplevel):
         btn_sel_tmplt.grid(row=1, column=0, padx=10, pady=10)
         file_lbl = tk.Label(self,font=sys_fnt_BTN, textvariable=self.tmplt_var, state='disabled')
         file_lbl.grid(row=1, column=1, padx=10, pady=10)
-        del_old_ckbx = tk.Checkbutton(self, text='Delete old files?', font=sys_fnt_txt, variable=self.del_var)
-        del_old_ckbx.grid(row=2, column=0, padx=10, pady=10)
+
+        action_lf = tk.LabelFrame(self, text='Select Update Action', font=sys_fnt_txt)
+        action_lf.grid(row=2, column=0, columnspan=2, padx=10, pady=10)
+        self.action_mv = tk.Radiobutton(action_lf, text='Move', font=sys_fnt_txt, value=CONST_actionType['move'], variable=self.upd_action)
+        self.action_mv.grid(row=0, column=0, padx=10, pady=10)
+        self.action_cpy = tk.Radiobutton(action_lf, text='Copy', font=sys_fnt_txt, value=CONST_actionType['copy'], variable=self.upd_action)
+        self.action_cpy.grid(row=1, column=0, padx=10, pady=(0,10))
+        self.del_old_ckbx = tk.Checkbutton(action_lf, text='Delete old files?', font=sys_fnt_txt, variable=self.del_var)
+        self.del_old_ckbx.grid(row=1, column=1, padx=10, pady=(0,10))
+        self.del_old_ckbx.grid_forget() #default hide
+        self.upd_action.trace_add('write', self.action_upd)     #update/manage options when a radio button is selected or the variable is updated
+
         ctl_frame = tk.Frame(self)
         ctl_frame.grid(row=3, column=0, padx=10, pady=(10,20), columnspan=2, sticky=tk.EW)
         ctl_frame.grid_columnconfigure(0,weight=1); ctl_frame.grid_columnconfigure(1,weight=1)
@@ -127,6 +185,15 @@ class user_prompt_update(tk.Toplevel):
         dialog_opts = {'filetypes':filetypes,
                        'title':'Update Template'}  
         self.tmplt_var.set(open_file_dialog(dialog_opts))  #set temp result
+
+    def action_upd(self, *args):
+        """function runs when a radio button is updated to manage updating variables
+        """
+        if self.upd_action.get() == CONST_actionType['move']:   #if the current selected option is "move"
+            self.del_old_ckbx.grid_forget()                         #hide the delete old file option
+            self.del_var.set(False)                                 #and set the "Delete" to false to clear any previous selection
+        else:
+            self.del_old_ckbx.grid(row=1, column=1, padx=10, pady=(0,10))   #re-show the checkbox
 
     def check_results(self):
         """function error checks the selected results before closing.
@@ -153,7 +220,6 @@ class user_prompt_update(tk.Toplevel):
         """
         if self.check_results() == True:
             self.template_path = self.tmplt_var.get()   #update outputs
-            self.del_old = self.del_var.get()
             self.on_close()     #close window
         else:
             messagebox.showerror("Error", "File selection not valid or cannot find required headers.\nTemplate must have colunms for \"File_Path\" and \"New_File_Path\"")
@@ -332,44 +398,6 @@ def get_file_ext(file_name):
     """
     return os.path.splitext(file_name)[-1].lower()
 
-#--constnant dict for open type
-CONST_openType = {'file':1,
-                  'dir':2}
-
-#--constant dict for accepted media property formats
-CONST_media_formats = {'MKV': '.mkv'}
-
-#--constant dict for accepted input template formats
-CONST_template_formats = {'XLSX': '.xlsx',
-                          'XLS': '.xls',
-                          'CSV': '.csv'}
-
-#--constant dict for the output CSV file used when parsing files
-CONST_CSVexport_hdrs = {'file_name':'File_Name',    #format for dict is {'media_file_props.attr_name':'CSV output File Header'}
-                        'full_path':'File_Path',
-                        'good_estimate':'Good_Estimate',
-                        'est_time_raw':'Runtime_Seconds',
-                        'est_time_str':'Runtime_HH:MM:SS'}
-
-#--constant dict for error types
-CONST_err_types = {'err':'error',
-                   'warn':'warning'}
-
-#--Misc theme constants for labels and buttons
-sys_fnt_HDR1 = ('Arial', '20', 'normal', 'roman')
-sys_fnt_txt = ('Arial', '14', 'normal', 'roman')
-sys_fnt_BTN = ('Arial', '14', 'normal', 'roman')
-sys_fnt_small = ('Arial', '8', 'normal', 'roman')
-
-#--file import key columns
-sys_tmplt_oldFile_hdrName = 'File_Path'
-sys_tmplt_newFile_hdrName = 'New_File_Path'
-
-#--misc constants
-sys_wrap_len = 550
-sys_err_wndw_width = 600
-
-
 #-----------------------------main window
 
 class wndw_Main(tk.Tk):
@@ -443,11 +471,12 @@ class wndw_Main(tk.Tk):
         """function called when user wants to update media file names based on a selected template"""
         prompt_user_update = user_prompt_update(self)                   #prompt user for inputs in new top-level
         files_to_update = self.get_files_to_update(prompt_user_update.template_path)    #get list of files to update
-        del_old = prompt_user_update.del_old                            #assign if should delete old
+        del_old = prompt_user_update.del_var.get()                      #local for deleting old files
+        upd_act = prompt_user_update.upd_action.get()                   #local for the action to perform
         if len(files_to_update) > 0:                                    #if input template has valid updates
-            cont_upd = self.update_files_error_check(files_to_update)   #then do an error check                
+            cont_upd = self.update_files_error_check(files_to_update,upd_act)   #then do an error check                
             if cont_upd == True:                                        #if user chose to continue or no errors
-                self.update_media_files(files_to_update,del_old)        #then perform the move
+                self.update_media_files(files_to_update,upd_act,del_old)        #then perform the update
             else:
                 messagebox.showwarning("No Action", "User canceled, no move/update will be performed.")
         else:
@@ -579,6 +608,7 @@ class wndw_Main(tk.Tk):
             file_header = []    #output header list
             for v in CONST_CSVexport_hdrs.values():
                 file_header.append(v)                           #build header output
+            file_header.append(sys_tmplt_newFile_hdrName)           #and add the "update path" header for updates
             file_writer.writerow(file_header)                   #write header
             for file in files:                                  #loop through all file(s)
                 file_count+=1                                       #update file counter
@@ -591,11 +621,13 @@ class wndw_Main(tk.Tk):
                 file_writer.writerow(line_out)                  #and write line
         self.progress_bar_enable(False)                              #all done, so hide progress bar
     
-    def update_files_error_check(self, file_tup_list):
+    def update_files_error_check(self, file_tup_list, upd_act):
         """function checks for errors in the files to update
         
         :param file_tup_list: list of files to update/move and the new distination/name
         :type file_tup_list: `list` of `string``tuples` formatted as [(old_file_path1,new_file_path1),(old_file_2....)...(n)]
+        :param upd_act: the update action being performed
+        :type upd_act: dict `CONST_actionType`
         :returns: true/false if user wants to continue updating files (despite any errors
         :rtype: `bool`
         """
@@ -608,6 +640,8 @@ class wndw_Main(tk.Tk):
 
         new_files = []                                          #temp list for new files
         for tup in file_tup_list: new_files.append(tup[1])      #convert list of JUST new files
+        old_files = []                                          #temp list for old files
+        for tup in file_tup_list: old_files.append(tup[0])      #convert list of JUST old files
  
         for tup in file_tup_list:
             file_count+=1                                       #update file counter
@@ -621,7 +655,9 @@ class wndw_Main(tk.Tk):
             if check_file_exists(tup[1]) == True:
                 errors.append((CONST_err_types['err'],'row:'+str(file_count+1)+' | Output file already exists: '+tup[1]))
             if tup[1] != '' and new_files.count(tup[1]) > 1:
-                errors.append((CONST_err_types['err'],'row:'+str(file_count+1)+' | Output file exists more than once: '+tup[1]))     
+                errors.append((CONST_err_types['err'],'row:'+str(file_count+1)+' | Output file exists more than once: '+tup[1])) 
+            if upd_act == CONST_actionType['move'] and old_files.count(tup[0]) > 1:
+                errors.append((CONST_err_types['err'],'row:'+str(file_count+1)+' | Update action is MOVE and input file is listed more than once: '+tup[0]))  
 
         self.progress_bar_enable(False)                              #hide progress bar
 
@@ -647,7 +683,7 @@ class wndw_Main(tk.Tk):
         if tmplt_path is not None:
             file_ext = os.path.splitext(os.path.basename(tmplt_path))       #get its extension
             if file_ext[1] in list(CONST_template_formats.values()):        #if its a valid extension
-                if file_ext == '.csv': data_pd = pd.read_csv(tmplt_path)    #open if CSV
+                if file_ext[1] == '.csv': data_pd = pd.read_csv(tmplt_path) #open if CSV
                 else: data_pd = pd.read_excel(tmplt_path)                   #open if excel type
 
                 data_pd = data_pd.replace(np.nan, '')                       #convert "NaN" values to None
@@ -656,11 +692,13 @@ class wndw_Main(tk.Tk):
             
         return rfiles
 
-    def update_media_files(self, file_tup_list, del_old):
+    def update_media_files(self, file_tup_list, upd_action, del_old):
         """function updates/moves the files based on the passed list
         
         :param file_tup_list: list of files to update/move and the new distination/name
         :type file_tup_list: `list` of `string``tuples` formatted as [(old_file_path1,new_file_path1),(old_file_2....)...(n)]
+        :param upd_action: move or copy the target file
+        :type upd_action: dict `CONST_actionType`
         :param del_old: should the old files be deleted?
         :type del_old: `bool` - True to delete old files
         """
@@ -673,14 +711,17 @@ class wndw_Main(tk.Tk):
             pb_num = round(file_count/num_files*100)            #update file count
             self.progress_bar_update({'value':pb_num})          #update progress bar
 
-            old_file = tup[0]; new_file = tup[1]        #temp new/old file names
+            old_file = tup[0]; new_file = tup[1]                #temp new/old file names
             if new_file != '':
-                new_file_dir = os.path.dirname(new_file)    #get directory of "new_file"
-                if not check_dir_exists(new_file_dir):      #if destination directory doesn't exist
+                new_file_dir = os.path.dirname(new_file)        #get directory of "new_file"
+                if not check_dir_exists(new_file_dir):          #if destination directory doesn't exist
                     #os.mkdir(new_file_dir)                      
                     Path(new_file_dir).mkdir(parents=True, exist_ok=True)   #then make it
-                shutil.copy(old_file, new_file) #copy file from "File_Path" to "New_File_Path"
-        self.progress_bar_enable(False)                                 #hide progress bar
+                if upd_action == CONST_actionType['copy']:      #if the action is to copy the file to a new location
+                    shutil.copy(old_file, new_file)                 #copy file from "old_file" to "new_file"
+                elif upd_action == CONST_actionType['move']:    #else, if the action is to simply move the file and possibly rename it
+                    shutil.move(old_file, new_file)                 #move file from "old_file" to "new_file"
+        self.progress_bar_enable(False)                         #hide progress bar
 
         #--wait to remove "old" files until done in case they were copied to multiple places or multiple times
         if del_old == True:                             #if set to delete old files
